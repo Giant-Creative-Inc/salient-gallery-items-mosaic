@@ -250,14 +250,32 @@ final class Salient_Gallery_Items_Mosaic {
 
 				<div class="sgim__lightbox-dialog" role="dialog" aria-modal="true" aria-label="Image viewer">
 					<button type="button" class="sgim__lightbox-close" data-sgim-close aria-label="Close image viewer">×</button>
-					<button type="button" class="sgim__lightbox-prev" data-sgim-prev aria-label="Previous image">‹</button>
+					<button type="button" class="sgim__lightbox-prev" data-sgim-prev aria-label="Previous image"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="33" viewBox="0 0 20 33" fill="none">
+  <g clip-path="url(#clip0_207_1483)">
+    <path d="M5.21667 16.5L19.5167 30.657L17.15 33L0.483337 16.5L17.15 0L19.5167 2.343L5.21667 16.5Z" fill="#fff"/>
+  </g>
+  <defs>
+    <clipPath id="clip0_207_1483">
+      <rect width="20" height="33" fill="white"/>
+    </clipPath>
+  </defs>
+</svg></button>
 
 					<figure class="sgim__lightbox-figure">
 						<img class="sgim__lightbox-img" data-sgim-lightbox-img alt="">
 						<figcaption class="sgim__lightbox-caption" data-sgim-lightbox-caption></figcaption>
 					</figure>
 
-					<button type="button" class="sgim__lightbox-next" data-sgim-next aria-label="Next image">›</button>
+					<button type="button" class="sgim__lightbox-next" data-sgim-next aria-label="Next image"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="33" viewBox="0 0 20 33" fill="none">
+  <g clip-path="url(#clip0_207_1489)">
+    <path d="M14.7833 16.5L0.48333 2.343L2.85 1.45705e-06L19.5167 16.5L2.85 33L0.483332 30.657L14.7833 16.5Z" fill="#fff"/>
+  </g>
+  <defs>
+    <clipPath id="clip0_207_1489">
+      <rect width="20" height="33" fill="white" transform="translate(20 33) rotate(180)"/>
+    </clipPath>
+  </defs>
+</svg></button>
 				</div>
 			</div>
 		</div>
