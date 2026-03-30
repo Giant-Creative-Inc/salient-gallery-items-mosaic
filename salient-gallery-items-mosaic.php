@@ -451,25 +451,28 @@ final class Salient_Gallery_Items_Mosaic {
 		$page     = !empty($args['page']) ? (int) $args['page'] : 1;
 		$per_page = !empty($args['per_page']) ? (int) $args['per_page'] : 24;
 
+		// Fetch one extra item instead of using SQL_CALC_FOUND_ROWS.
+		// has_more is true if we got more than per_page results.
 		$query_args = [
 			'post_type'      => 'gallery-items',
 			'post_status'    => 'publish',
-			'posts_per_page' => $per_page,
+			'posts_per_page' => $per_page + 1,
 			'paged'          => $page,
 			'orderby'        => $orderby,
 			'order'          => $order,
 			'fields'         => 'ids',
+			'no_found_rows'  => true,
 		];
 
 		if (count($tax_query) > 1) {
 			$query_args['tax_query'] = $tax_query;
 		}
 
-		$q = new WP_Query($query_args);
+		$q   = new WP_Query($query_args);
 		$ids = $q->posts;
 
-		$max_pages = (int) $q->max_num_pages;
-		$has_more  = ($page < $max_pages);
+		$has_more = count($ids) > $per_page;
+		if ($has_more) array_pop($ids);
 
 		if (empty($ids)) {
 			return [
@@ -478,23 +481,38 @@ final class Salient_Gallery_Items_Mosaic {
 			];
 		}
 
-		$out = [];
-		foreach ($ids as $post_id) {
-			$title = get_the_title($post_id);
-			$permalink = get_permalink($post_id);
+		// Bulk-prime post objects + meta for all gallery item IDs (2 queries).
+		// Every get_the_title(), get_permalink(), get_post_meta() call below
+		// will hit the in-memory cache instead of issuing individual DB queries.
+		_prime_post_caches($ids, false, true);
 
-			// Fast reads from meta (ACF stores values in post meta).
+		// First pass: resolve attachment IDs (reads from primed meta cache).
+		$image_map = []; // post_id => attachment_id
+		foreach ($ids as $post_id) {
 			$img_meta = get_post_meta($post_id, 'image', true);
 			$image_id = self::resolve_attachment_id($img_meta);
-			if (!$image_id) continue;
+			if ($image_id) $image_map[$post_id] = $image_id;
+		}
 
-			$mosaic = (string) get_post_meta($post_id, 'mosaic_size', true);
-			$mosaic = self::normalize_mosaic_value($mosaic);
+		// Bulk-prime attachment post data + meta (URLs, srcset, alt text).
+		if (!empty($image_map)) {
+			_prime_post_caches(array_unique(array_values($image_map)), false, true);
+		}
 
-			$desc = (string) get_post_meta($post_id, 'description', true);
+		// Second pass: build output — all reads hit cache.
+		$out = [];
+		foreach ($ids as $post_id) {
+			if (!isset($image_map[$post_id])) continue;
+			$image_id = $image_map[$post_id];
 
-			$thumb_src    = wp_get_attachment_image_url($image_id, 'medium_large');
-			$img_src      = wp_get_attachment_image_url($image_id, 'large');
+			$title     = get_the_title($post_id);
+			$permalink = get_permalink($post_id);
+			$mosaic    = (string) get_post_meta($post_id, 'mosaic_size', true);
+			$mosaic    = self::normalize_mosaic_value($mosaic);
+			$desc      = (string) get_post_meta($post_id, 'description', true);
+
+			$thumb_src = wp_get_attachment_image_url($image_id, 'medium_large');
+			$img_src   = wp_get_attachment_image_url($image_id, 'large');
 
 			if (!$thumb_src) $thumb_src = wp_get_attachment_image_url($image_id, 'full');
 			if (!$img_src)   $img_src   = wp_get_attachment_image_url($image_id, 'full');
