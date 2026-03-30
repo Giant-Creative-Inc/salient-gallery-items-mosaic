@@ -54,6 +54,9 @@
     const $img = $lightbox.find("[data-sgim-lightbox-img]");
     const $cap = $lightbox.find("[data-sgim-lightbox-caption]");
 
+    // Move lightbox to <body> to escape any parent stacking context
+    $("body").append($lightbox);
+
     let activeIndex = 0;
     let lastFocusedEl = null;
 
@@ -220,15 +223,15 @@
       openLightbox(idx);
     });
 
-    $root.on("click", "[data-sgim-close]", function () {
+    $lightbox.on("click", "[data-sgim-close]", function () {
       closeLightbox();
     });
 
-    $root.on("click", "[data-sgim-prev]", function () {
+    $lightbox.on("click", "[data-sgim-prev]", function () {
       goPrev();
     });
 
-    $root.on("click", "[data-sgim-next]", function () {
+    $lightbox.on("click", "[data-sgim-next]", function () {
       goNext();
     });
 
