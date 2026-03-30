@@ -42,11 +42,224 @@
     return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1;
   }
 
+  /**
+   * Replaces native <select data-sgim-filter> elements with an accessible
+   * custom listbox dropdown (black + gold theme).
+   *
+   * The native <select> stays hidden in the DOM so that the gallery JS can
+   * still read/set its value via jQuery's .val() — the custom UI syncs to it.
+   *
+   * ARIA pattern: button (aria-haspopup="listbox") + ul (role="listbox")
+   * Keyboard: Enter/Space open; arrows navigate; Enter/Space select;
+   *           Escape closes; Home/End jump; Tab closes.
+   */
+  function initCustomSelects($root) {
+    $root.find("[data-sgim-filter]").each(function () {
+      const $native   = $(this);
+      const origId    = $native.attr("id") || "";
+      const filterKey = $native.data("sgim-filter");
+      const listboxId = "sgim-listbox-" + filterKey;
+
+      // Move the id to the trigger so <label for="..."> still works.
+      $native.removeAttr("id");
+
+      // Wrap and hide native select (kept for .val() reads by gallery JS).
+      $native.wrap('<div class="sgim__select-wrapper"></div>');
+      const $wrapper = $native.parent();
+      $native.addClass("sgim__select--hidden").attr({
+        "aria-hidden": "true",
+        "tabindex":    "-1",
+      });
+
+      // --- Build trigger button ---
+      const initialText = $native.find("option:selected").text() ||
+                          $native.find("option:first").text();
+
+      const $trigger = $('<button type="button" class="sgim__select-trigger"></button>').attr({
+        id:               origId,
+        "aria-haspopup":  "listbox",
+        "aria-expanded":  "false",
+        "aria-controls":  listboxId,
+      });
+
+      $('<span class="sgim__select-value"></span>').text(initialText).appendTo($trigger);
+      // Chevron arrow (SVG)
+      $('<span class="sgim__select-arrow" aria-hidden="true">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" fill="none">' +
+            '<path d="M1 1L6 7L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>' +
+        '</span>').appendTo($trigger);
+
+      // --- Build listbox ---
+      const $listbox = $('<ul role="listbox" class="sgim__select-listbox" hidden></ul>').attr("id", listboxId);
+
+      $native.find("option").each(function (i) {
+        const val        = $(this).val();
+        const text       = $(this).text();
+        const isSelected = $(this).is(":selected");
+
+        $('<li role="option" class="sgim__select-option"></li>').attr({
+          "data-value":   val,
+          "aria-selected": isSelected ? "true" : "false",
+          id:              listboxId + "-" + i,
+        }).text(text).appendTo($listbox);
+      });
+
+      $wrapper.append($trigger).append($listbox);
+
+      // --- State ---
+      let focusedIdx = -1;
+      const isOpen   = () => $trigger.attr("aria-expanded") === "true";
+      const $opts    = () => $listbox.find("[role='option']");
+
+      function openList() {
+        $trigger.attr("aria-expanded", "true");
+        $listbox.prop("hidden", false);
+        // Focus the currently selected item.
+        const selIdx = $opts().index($opts().filter("[aria-selected='true']"));
+        setFocus(selIdx >= 0 ? selIdx : 0);
+      }
+
+      function closeList() {
+        $trigger.attr({ "aria-expanded": "false", "aria-activedescendant": "" });
+        $listbox.prop("hidden", true);
+        $opts().removeClass("sgim__select-option--focused");
+        focusedIdx = -1;
+      }
+
+      function setFocus(idx) {
+        const opts = $opts();
+        opts.removeClass("sgim__select-option--focused");
+        if (idx < 0 || idx >= opts.length) return;
+        const $opt = opts.eq(idx);
+        $opt.addClass("sgim__select-option--focused");
+        $trigger.attr("aria-activedescendant", $opt.attr("id") || "");
+        // Scroll option into view within the listbox.
+        const listEl = $listbox[0];
+        const optEl  = $opt[0];
+        if (optEl.offsetTop < listEl.scrollTop) {
+          listEl.scrollTop = optEl.offsetTop;
+        } else if (optEl.offsetTop + optEl.offsetHeight > listEl.scrollTop + listEl.clientHeight) {
+          listEl.scrollTop = optEl.offsetTop + optEl.offsetHeight - listEl.clientHeight;
+        }
+        focusedIdx = idx;
+      }
+
+      function selectByIndex(idx) {
+        const opts = $opts();
+        if (idx < 0 || idx >= opts.length) return;
+        const $opt = opts.eq(idx);
+        opts.attr("aria-selected", "false");
+        $opt.attr("aria-selected", "true");
+        $trigger.find(".sgim__select-value").text($opt.text());
+        $trigger.toggleClass("sgim__select-trigger--active", String($opt.data("value")) !== "0");
+        // Sync native select and notify gallery JS.
+        $native.val($opt.data("value")).trigger("change");
+        closeList();
+        $trigger.focus();
+      }
+
+      // --- Interactions ---
+      $trigger.on("click", function () {
+        isOpen() ? closeList() : openList();
+      });
+
+      $trigger.on("keydown", function (e) {
+        const opts    = $opts();
+        const open    = isOpen();
+
+        switch (e.key) {
+          case "Enter":
+          case " ":
+            e.preventDefault();
+            if (open) {
+              if (focusedIdx >= 0) selectByIndex(focusedIdx);
+            } else {
+              openList();
+            }
+            break;
+          case "ArrowDown":
+            e.preventDefault();
+            if (!open) { openList(); break; }
+            setFocus(Math.min(focusedIdx + 1, opts.length - 1));
+            break;
+          case "ArrowUp":
+            e.preventDefault();
+            if (!open) { openList(); break; }
+            setFocus(Math.max(focusedIdx - 1, 0));
+            break;
+          case "Home":
+            e.preventDefault();
+            if (open) setFocus(0);
+            break;
+          case "End":
+            e.preventDefault();
+            if (open) setFocus(opts.length - 1);
+            break;
+          case "Escape":
+            if (open) { e.preventDefault(); closeList(); }
+            break;
+          case "Tab":
+            if (open) closeList();
+            break;
+        }
+      });
+
+      // Use mousedown (not click) so that preventDefault() keeps focus on the
+      // trigger button. Without this, focus leaves the trigger on mousedown,
+      // the focusout handler closes the list, and the click never lands on an option.
+      $listbox.on("mousedown", function (e) {
+        e.preventDefault(); // Keep focus on trigger; suppress focusout-driven close.
+      });
+
+      $listbox.on("mousedown", "[role='option']", function (e) {
+        e.preventDefault();
+        selectByIndex($(this).index());
+      });
+
+      // Highlight on hover (mouse users expect this).
+      $listbox.on("mousemove", "[role='option']", function () {
+        const idx = $(this).index();
+        if (idx !== focusedIdx) setFocus(idx);
+      });
+
+      // Close when focus leaves the wrapper entirely (keyboard Tab away etc.).
+      $wrapper.on("focusout", function () {
+        setTimeout(function () {
+          if (!$wrapper[0].contains(document.activeElement)) closeList();
+        }, 0);
+      });
+
+      // Close on outside click.
+      $(document).on("click.sgim-select-" + filterKey, function (e) {
+        if (!$wrapper[0].contains(e.target)) closeList();
+      });
+    });
+
+    // When the gallery's clear button fires, reset custom dropdown labels too.
+    $root.on("click.sgim-select-clear", "[data-sgim-clear]", function () {
+      $root.find(".sgim__select-wrapper").each(function () {
+        const $wrapper = $(this);
+        const $native  = $wrapper.find("[data-sgim-filter]");
+        const $trigger = $wrapper.find(".sgim__select-trigger");
+        const $listbox = $wrapper.find(".sgim__select-listbox");
+
+        const firstText = $native.find("option:first").text();
+        $trigger.find(".sgim__select-value").text(firstText);
+        $trigger.removeClass("sgim__select-trigger--active");
+        $listbox.find("[role='option']").attr("aria-selected", "false");
+        $listbox.find("[role='option']:first").attr("aria-selected", "true");
+      });
+    });
+  }
+
   function initGallery($root) {
+    initCustomSelects($root);
     const $grid = $root.find("[data-sgim-grid]");
     const $status = $root.find("[data-sgim-status]");
     const $sentinel = $root.find("[data-sgim-sentinel]");
     const $loader = $root.find("[data-sgim-loader]");
+    const $filterLoader = $root.find("[data-sgim-filter-loader]");
     const $clearBtn = $root.find("[data-sgim-clear]");
 
     const $lightbox = $root.find("[data-sgim-lightbox]");
@@ -72,8 +285,10 @@
       if (loading) {
         $loader.prop("hidden", false);
         $loader.find(".sgim__loader-text").text(msg || "Loading images…");
+        $filterLoader.prop("hidden", false);
       } else {
         $loader.prop("hidden", true);
+        $filterLoader.prop("hidden", true);
         // keep text minimal so screen readers don't repeat
         // $status.text("");
         // re-insert loader node because we cleared status text above
